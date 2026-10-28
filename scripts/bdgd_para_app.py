@@ -20,6 +20,7 @@ da ANEEL (dadosabertos.aneel.gov.br), cruzada pelo código CEG.
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -58,6 +59,19 @@ def potencia_gd(caminho):
         df = pd.read_csv(caminho, sep=";", encoding="latin-1", dtype=str, usecols=cols)
     kw = pd.to_numeric(df["MdaPotenciaInstaladaKW"].astype(str).str.replace(",", "."), errors="coerce")
     return dict(zip(df["CodEmpreendimento"].astype(str).str.strip(), kw))
+
+
+def datas_dos_dados(gdb, gd):
+    """Datas para o app: data-base e publicação da BDGD (pelo nome do .gdb) e geração da lista de GD da ANEEL."""
+    datas = {}
+    m = re.search(r"_(\d{4}-\d{2}-\d{2})_V\d+_(\d{8})", Path(gdb).name)
+    if m:
+        datas["bdgd_base"] = m.group(1)
+        p = m.group(2)
+        datas["bdgd_publicacao"] = f"{p[:4]}-{p[4:6]}-{p[6:]}"
+    if gd and str(gd).endswith(".parquet"):
+        datas["gd_aneel"] = str(pd.read_parquet(gd, columns=["DatGeracaoConjuntoDados"])["DatGeracaoConjuntoDados"].max())[:10]
+    return datas
 
 
 def main():
@@ -170,6 +184,7 @@ def main():
         "fonte": a.fonte,
         "municipios": {m: MUNICIPIOS_GO.get(m, m) for m in a.mun},
         "localidades": [{"nome": n, "ll": [la, lo]} for n, la, lo, _ in locais],
+        "datas": datas_dos_dados(a.gdb, a.gd),
         "center": [sorted(lat)[len(lat) // 2], sorted(lng)[len(lng) // 2]],
         "trafos": trafos, "feeders": feeders, "streets": [], "blocks": [],
     }
