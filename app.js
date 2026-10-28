@@ -13,6 +13,7 @@ const NAT = {57:'57 — Concessionária (Distribuidora)'};
 function janela(t){ return t.ger == null ? null : Math.max(0, +(t.pot - t.ger).toFixed(1)); }
 function status(t){ const j = janela(t); if (j == null) return 'unk'; const r = j/t.pot; return r > .4 ? 'ok' : r >= .1 ? 'warn' : 'bad'; }
 const STATUS_TXT = {ok:'Livre', warn:'Limitada', bad:'Saturada', unk:'GD a confirmar'};
+const dataBR = s => s ? s.slice(0, 10).split('-').reverse().join('/') : '—';
 const kw = v => v == null ? 'a confirmar' : `${fmt(v)} kW`;
 
 // rotate: giro com dois dedos (celular), Shift + roda do mouse (PC) e bússola para voltar ao norte
@@ -138,6 +139,7 @@ function open(t){
       <button class="btn primary" id="copy">Copiar dados para o projeto</button>
       <button class="btn" id="zoom">Centralizar no mapa</button>
     </div>
+    ${DATA.datas ? `<p class="note"><b>Data dos dados:</b> rede da BDGD ANEEL com data-base ${dataBR(DATA.datas.bdgd_base)} (publicada em ${dataBR(DATA.datas.bdgd_publicacao)}); usinas ligadas ao trafo até ${dataBR(DATA.datas.bdgd_base)}, com potência pela lista de GD da ANEEL de ${dataBR(DATA.datas.gd_aneel)}. Usinas conectadas depois de ${dataBR(DATA.datas.bdgd_base)} ainda não aparecem.</p>` : ''}
     <p class="note">A janela é estimada como potência do transformador menos a geração já conectada. A análise oficial de acesso é feita pela distribuidora (Equatorial Goiás).</p>`;
   $('#more').onclick = () => { showAll = !showAll; open(t); };
   $('#zoom').onclick = () => map.flyTo(t.ll, 19);
@@ -258,6 +260,8 @@ if (!DATA.blocks.length){ sat.addTo(map); press('#b-sat', true); press('#b-vec',
 // abre um exemplo parecido com a referência (75 kVA)
 if (!DATA.exemplo) document.querySelector('.demo').hidden = true;
 if (DATA.fonte) map.attributionControl.addAttribution(DATA.fonte);
+if (DATA.datas) document.querySelector('.legend').insertAdjacentHTML('beforeend',
+  `<div class="datas">Dados até ${dataBR(DATA.datas.bdgd_base)} (BDGD ANEEL) · potências GD de ${dataBR(DATA.datas.gd_aneel)}</div>`);
 if (DATA.exemplo){
   const ex = DATA.trafos.find(t => t.pot === 75 && t.usinas > 0 && status(t) !== 'bad') || DATA.trafos[0];
   if (innerWidth >= 760) open(ex);
