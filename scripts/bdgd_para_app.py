@@ -23,8 +23,10 @@ import json
 import sys
 from pathlib import Path
 
+import geopandas as gpd
 import pandas as pd
 import pyogrio
+from shapely.ops import linemerge, unary_union
 
 # PRODIST Módulo 10, tabela TTEN (código -> kV). Os códigos 39 e 58 são tensões fase-neutro
 # dos sistemas 13,8 kV e 34,5 kV (trafos monofásicos MRT).
@@ -34,6 +36,7 @@ TTEN_SISTEMA = {39: 13.8, 49: 13.8, 58: 34.5, 72: 34.5}
 MUNICIPIOS_GO = {
     "5207352": "Edealina", "5207402": "Edéia", "5217708": "Pontalina", "5222054": "Vicentinópolis",
     "5210000": "Inhumas", "5218391": "Professor Jamil", "5206503": "Cromínia", "5208707": "Goiânia",
+    "5204508": "Caldas Novas", "5213806": "Morrinhos", "5200134": "Acreúna",
 }
 ELO = {"0": "Não informado", "": "Não informado"}
 
@@ -61,13 +64,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("gdb")
     ap.add_argument("--mun", action="append", required=True, help="código IBGE do município (pode repetir)")
+    ap.add_argument("--local", action="append", default=[],
+                    help='distrito ou povoado: "Nome|lat|lon|raio_km" (inclui trafos no raio, de qualquer município)')
     ap.add_argument("--gd", help="relação de empreendimentos de GD da ANEEL (.parquet ou .csv)")
     ap.add_argument("--saida", default="data/trafos.json")
     ap.add_argument("--fonte", default="BDGD ANEEL 2025 — Equatorial Goiás")
     a = ap.parse_args()
     muns = lista_sql(a.mun)
 
-    tr = ler(a.gdb, "UNTRMT", where=f"MUN IN ({muns}) AND SIT_ATIV = 'AT'").to_crs(4326)
+    tr = ler(a.gdb, "UNTRMT", where=f"MUN IN ({muns}) AND SIT_ATIV = 'AT'")
+    locais = []
+    for txt in a.local:
+        nome, lat, lon, raio = txt.split("|")
+        lat, lon, raio = float(lat), float(lon), float(raio)
+        locais.append((nome, lat, lon, raio))
+        d = raio / 111
+        extra = ler(a.gdb, "UNTRMT", where="SIT_ATIV = 'AT'", bbox=(lon - d, lat - d, lon + d, lat + d))
+        tr = pd.concat([tr, extra]).drop_duplicates("COD_ID")
+    tr = gpd.GeoDataFrame(tr, geometry="geometry", crs=tr.crs).to_crs(4326)
     print(f"{len(tr)} transformadores", file=sys.stderr)
     ids = tr["COD_ID"].astype(str).tolist()
 
@@ -77,8 +91,9 @@ def main():
     ct = ler(a.gdb, "CTMT", read_geometry=False, columns=["COD_ID", "NOME", "TEN_NOM", "SUB"]).set_index("COD_ID")
     sub = ler(a.gdb, "SUB", read_geometry=False, columns=["COD_ID", "NOME"]).set_index("COD_ID")["NOME"]
 
+    todos_muns = lista_sql(sorted(set(a.mun) | set(tr["MUN"].astype(str))))
     uc = ler(a.gdb, "UCBT_tab", read_geometry=False, columns=["UNI_TR_MT", "CEG_GD", "SIT_ATIV", "MUN"],
-             where=f"MUN IN ({muns})")
+             where=f"MUN IN ({todos_muns})")
     uc_tr = uc.groupby("UNI_TR_MT").size()
     gd = uc[uc["CEG_GD"].str.strip().fillna("") != ""]
     kw = potencia_gd(a.gd) if a.gd else {}
@@ -105,7 +120,6 @@ def main():
             "tp": sistema,
             "tp_fase": TTEN_KV.get(cod_tp),
             "ts": f"{round(ts * 1000)} V" if ts else "—",
-            "sec": f"{round(ts * 1000)} V" if ts else "—",
             "ctmt": str(r.CTMT),
             "ctmt_nome": str(c.NOME) if c is not None else str(r.CTMT),
             "se": se_nome,
@@ -127,19 +141,22 @@ def main():
             "ano": str(r.DAT_CON or "")[-4:] or None,
             "descr": str(r.DESCR or ""),
         })
+        for nome, lat, lon, raio in locais:
+            if ((r.geometry.y - lat) ** 2 + ((r.geometry.x - lon) * 0.95) ** 2) ** .5 * 111 <= raio:
+                trafos[-1]["local"] = nome
 
     # rede MT dos alimentadores presentes, recortada à área dos transformadores
     ctmts = sorted({t["ctmt"] for t in trafos})
     lat = [t["ll"][0] for t in trafos]; lng = [t["ll"][1] for t in trafos]
     bbox = (min(lng) - .02, min(lat) - .02, max(lng) + .02, max(lat) + .02)
     ss = ler(a.gdb, "SSDMT", columns=["CTMT"], bbox=bbox, where=f"CTMT IN ({lista_sql(ctmts)})").to_crs(4326)
-    ss["geometry"] = ss.geometry.simplify(0.00003)
     paleta = ["#ff7a1a", "#2fb5ff", "#d36bff", "#ffd400", "#3fe0b0", "#ff4f8b", "#9be15d", "#7aa2ff"]
     feeders = []
     for i, (cod, grp) in enumerate(ss.groupby("CTMT")):
         linhas = []
-        for g in grp.geometry:
-            for parte in getattr(g, "geoms", [g]):
+        unida = linemerge(unary_union(list(grp.geometry))).simplify(0.00005)
+        for parte in getattr(unida, "geoms", [unida]):
+            if True:
                 linhas.append([[round(y, 5), round(x, 5)] for x, y in parte.coords])
         c = ct.loc[cod] if cod in ct.index else None
         feeders.append({
@@ -152,6 +169,7 @@ def main():
     out = {
         "fonte": a.fonte,
         "municipios": {m: MUNICIPIOS_GO.get(m, m) for m in a.mun},
+        "localidades": [{"nome": n, "ll": [la, lo]} for n, la, lo, _ in locais],
         "center": [sorted(lat)[len(lat) // 2], sorted(lng)[len(lng) // 2]],
         "trafos": trafos, "feeders": feeders, "streets": [], "blocks": [],
     }
