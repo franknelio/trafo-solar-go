@@ -152,25 +152,80 @@ function applyNeed(){
 }
 $('#need').addEventListener('change', applyNeed);
 
-// busca
+// busca: trafo, alimentador, município, distrito, endereço ou coordenadas
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const COORD = /^\s*(-?\d{1,2}[.,]\d+)\s*[,;\s]\s*(-?\d{1,3}[.,]\d+)\s*$/;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
+function coordsDe(q){ const m = q.match(COORD); return m ? [parseFloat(m[1].replace(',', '.')), parseFloat(m[2].replace(',', '.'))] : null; }
+
 $('#q').addEventListener('input', e => {
-  const q = e.target.value.trim().toLowerCase(), box = $('#results');
+  const raw = e.target.value.trim(), q = raw.toLowerCase(), box = $('#results');
   if (!q){ box.hidden = true; return; }
-  const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const c = coordsDe(raw);
   const muns = Object.entries(DATA.municipios || {}).filter(([, n]) => norm(n).includes(norm(q)));
   const locs = (DATA.localidades || []).filter(l => norm(l.nome).includes(norm(q)));
-  const hits = DATA.trafos.filter(t => [t.id, t.ctmt, t.ctmt_nome, t.se, t.descr || ''].some(v => v.toLowerCase().includes(q))).slice(0, 12);
-  box.innerHTML = locs.map(l => `<button data-loc="${l.nome}"><span><b>${l.nome}</b><br><span class="sub">Distrito / localidade</span></span><span class="sub">${DATA.trafos.filter(t => t.local === l.nome).length} trafos</span></button>`).join('') + muns.map(([c, n]) => `<button data-mun="${c}"><span><b>${n}</b><br><span class="sub">Município · ${c}</span></span><span class="sub">${DATA.trafos.filter(t => t.ibge === c).length} trafos</span></button>`).join('') + (hits.length ? hits.map(t => `<button data-id="${t.id}"><span><span class="code">${t.id}</span><br><span class="sub">${t.ctmt} · ${t.se}</span></span><span class="sub">${fmt(t.pot)} kVA · janela ${kw(janela(t))}</span></button>`).join('')
-    : muns.length || locs.length ? '' : '<button disabled><span class="sub">Nenhum transformador encontrado</span></button>');
-  box.hidden = false;
+  const hits = DATA.trafos.filter(t => [t.id, t.ctmt, t.ctmt_nome, t.se, t.descr || ''].some(v => v.toLowerCase().includes(q))).slice(0, 10);
+  box.innerHTML =
+    (c ? `<button data-gll="${c.join(',')}"><span><b>Ir para a coordenada</b><br><span class="sub">${c.join(', ')}</span></span><span class="sub">ver trafo mais próximo</span></button>` : '')
+    + (!c && raw.length >= 4 ? `<button data-geo="1"><span><b>Buscar endereço</b><br><span class="sub">${esc(raw)}</span></span><span class="sub">Enter</span></button>` : '')
+    + locs.map(l => `<button data-loc="${l.nome}"><span><b>${l.nome}</b><br><span class="sub">Distrito / localidade</span></span><span class="sub">${DATA.trafos.filter(t => t.local === l.nome).length} trafos</span></button>`).join('')
+    + muns.map(([c, n]) => `<button data-mun="${c}"><span><b>${n}</b><br><span class="sub">Município · ${c}</span></span><span class="sub">${DATA.trafos.filter(t => t.ibge === c).length} trafos</span></button>`).join('')
+    + hits.map(t => `<button data-id="${t.id}"><span><span class="code">${t.id}</span><br><span class="sub">${t.ctmt} · ${t.se}</span></span><span class="sub">${fmt(t.pot)} kVA · janela ${kw(janela(t))}</span></button>`).join('');
+  box.hidden = !box.innerHTML;
+});
+$('#q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const raw = e.target.value.trim(), c = coordsDe(raw);
+  if (c){ $('#results').hidden = true; return irPara(c, 'Coordenada informada'); }
+  const so = $('#results').querySelectorAll('button[data-loc], button[data-mun], button[data-id]');
+  if (so.length === 1) return so[0].click();
+  if (raw.length >= 4) geocode(raw);
 });
 $('#results').addEventListener('click', e => {
+  if (e.target.closest('button[data-geo]')) return geocode($('#q').value.trim());
+  const g = e.target.closest('button[data-gll]');
+  if (g){ $('#results').hidden = true; return irPara(g.dataset.gll.split(',').map(Number), g.dataset.nome || 'Coordenada informada'); }
   const l = e.target.closest('button[data-loc]');
   if (l){ const loc = DATA.localidades.find(x => x.nome === l.dataset.loc); $('#results').hidden = true; $('#q').value = loc.nome; map.flyTo(loc.ll, 15); return; }
   const m = e.target.closest('button[data-mun]');
   if (m){ const pts = DATA.trafos.filter(t => t.ibge === m.dataset.mun).map(t => t.ll); $('#results').hidden = true; $('#q').value = DATA.municipios[m.dataset.mun]; map.flyToBounds(pts, {padding:[40, 40]}); return; }
   const b = e.target.closest('button[data-id]'); if (!b) return;
   const t = DATA.trafos.find(x => x.id === b.dataset.id); $('#results').hidden = true; $('#q').value = t.id; map.flyTo(t.ll, 18.5); open(t); });
+
+// endereço -> coordenada pelo OpenStreetMap (Nominatim), priorizando Goiás
+async function geocode(txt){
+  const box = $('#results');
+  box.innerHTML = '<button disabled><span class="sub">Procurando endereço…</span></button>'; box.hidden = false;
+  const q = /goi[aá]s|\bgo\b/i.test(txt) ? txt : `${txt}, Goiás`;
+  const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+    q, format: 'jsonv2', countrycodes: 'br', limit: '6', 'accept-language': 'pt-BR', viewbox: '-53.3,-12.3,-45.9,-19.5'});
+  try {
+    const r = await fetch(url); const res = await r.json();
+    box.innerHTML = res.length ? res.map(x => `<button data-gll="${x.lat},${x.lon}" data-nome="${esc(x.display_name)}"><span><b>${esc(x.name || x.display_name.split(',')[0])}</b><br><span class="sub">${esc(x.display_name.split(',').slice(1, 4).join(','))}</span></span><span class="sub">${esc(x.type)}</span></button>`).join('')
+      : '<button disabled><span class="sub">Endereço não encontrado. Tente "rua, número, cidade" ou cole a coordenada (ex.: -17.52, -49.44).</span></button>';
+  } catch (err) {
+    box.innerHTML = '<button disabled><span class="sub">Sem conexão para buscar o endereço. Tente de novo ou use a coordenada.</span></button>';
+  }
+}
+
+// ponto procurado: marca no mapa e abre o transformador mais próximo
+const pino = L.circleMarker([0, 0], {renderer, radius:9, color:'#fff', weight:3, fillColor:'#2f6bff', fillOpacity:1, interactive:false});
+function distM(a, b){ const k = Math.PI / 180, x = (b[1] - a[1]) * k * Math.cos((a[0] + b[0]) / 2 * k), y = (b[0] - a[0]) * k; return Math.hypot(x, y) * 6371000; }
+function irPara(ll, nome){
+  pino.setLatLng(ll).addTo(map).bindTooltip(nome.split(',').slice(0, 3).join(','), {permanent:false});
+  let melhor = null, d = Infinity;
+  DATA.trafos.forEach(t => { const dd = distM(ll, t.ll); if (dd < d){ d = dd; melhor = t; } });
+  if (melhor && d < 3000){
+    map.flyToBounds([ll, melhor.ll], {maxZoom:18, paddingTopLeft:[60, 120], paddingBottomRight:[innerWidth >= 760 ? 460 : 60, innerWidth >= 760 ? 60 : innerHeight * .5]});
+    open(melhor); toast(`Transformador mais próximo: ${melhor.id}, a ${fmt(d, 0)} m.`); }
+  else { map.flyTo(ll, 16); toast('Nenhum transformador carregado num raio de 3 km deste ponto.'); }
+}
+$('#b-gps').onclick = () => {
+  if (!navigator.geolocation) return toast('Este navegador não informa a localização.');
+  toast('Buscando sua localização…');
+  navigator.geolocation.getCurrentPosition(p => irPara([p.coords.latitude, p.coords.longitude], 'Você está aqui'),
+    () => toast('Não foi possível obter a localização. Libere o GPS para este site.'), {enableHighAccuracy:true, timeout:15000});
+};
 
 // camadas
 function press(id, on){ $(id).setAttribute('aria-pressed', on); }
