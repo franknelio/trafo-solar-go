@@ -71,7 +71,7 @@ function open(t){
     ...(t.nat ? [['Natureza do transformador', NAT[t.nat] || t.nat]] : []),
     ['Potência nominal', `${fmt(t.pot)} kVA`],
     ['Tensão primária', `${kv(t.tp)} kV`],
-    ['Tensão secundária', t.sec],
+    ['Tensão secundária', t.sec || t.ts],
     ['Alimentador (CTMT)', `${t.ctmt} — ${t.ctmt_nome} · ${kv(t.tp)} kV`],
     ['Subestação (SE)', `${t.se} (${t.se_cod})`],
     ['Função', FUNC[t.tp] || t.funcao || 'Rebaixador MT'],
@@ -84,6 +84,7 @@ function open(t){
     ['Tipo de transformador', t.tipo],
     ['Tipo de posse', POSSE[t.posse] || t.posse],
     ['Município', t.mun ? `${t.mun} (${t.ibge})` : t.ibge],
+    ...(t.local ? [['Localidade', t.local]] : []),
   ];
   const extra = [
     ...(t.ucs ? [['Unidades consumidoras', t.ucs]] : []),
@@ -136,7 +137,7 @@ $('#layer').classList.add('closed');
 
 function copy(t){
   const txt = [`Transformador: ${t.id}`, `Potência: ${fmt(t.pot)} kVA`, `Tensão primária: ${kv(t.tp)} kV`,
-    `Tensão secundária: ${t.sec}`, `Alimentador: ${t.ctmt} — ${t.se}`, `Fases: ${t.fp} / ${t.fs}`,
+    `Tensão secundária: ${t.sec || t.ts}`, `Alimentador: ${t.ctmt} — ${t.se}`, `Fases: ${t.fp} / ${t.fs}`,
     `Usinas no transformador: ${t.usinas}`, `Geração conectada: ${kw(t.ger)}`, `Janela estimada: ${kw(janela(t))}`, `Coordenadas: ${t.ll.join(', ')}`].join('\n');
   navigator.clipboard?.writeText(txt).then(() => toast('Dados copiados.'), () => toast('Não foi possível copiar automaticamente.'))
     ?? toast('Não foi possível copiar automaticamente.');
@@ -155,13 +156,17 @@ $('#need').addEventListener('change', applyNeed);
 $('#q').addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase(), box = $('#results');
   if (!q){ box.hidden = true; return; }
-  const muns = Object.entries(DATA.municipios || {}).filter(([, n]) => n.toLowerCase().includes(q));
+  const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const muns = Object.entries(DATA.municipios || {}).filter(([, n]) => norm(n).includes(norm(q)));
+  const locs = (DATA.localidades || []).filter(l => norm(l.nome).includes(norm(q)));
   const hits = DATA.trafos.filter(t => [t.id, t.ctmt, t.ctmt_nome, t.se, t.descr || ''].some(v => v.toLowerCase().includes(q))).slice(0, 12);
-  box.innerHTML = muns.map(([c, n]) => `<button data-mun="${c}"><span><b>${n}</b><br><span class="sub">Município · ${c}</span></span><span class="sub">${DATA.trafos.filter(t => t.ibge === c).length} trafos</span></button>`).join('') + (hits.length ? hits.map(t => `<button data-id="${t.id}"><span><span class="code">${t.id}</span><br><span class="sub">${t.ctmt} · ${t.se}</span></span><span class="sub">${fmt(t.pot)} kVA · janela ${kw(janela(t))}</span></button>`).join('')
-    : muns.length ? '' : '<button disabled><span class="sub">Nenhum transformador encontrado</span></button>');
+  box.innerHTML = locs.map(l => `<button data-loc="${l.nome}"><span><b>${l.nome}</b><br><span class="sub">Distrito / localidade</span></span><span class="sub">${DATA.trafos.filter(t => t.local === l.nome).length} trafos</span></button>`).join('') + muns.map(([c, n]) => `<button data-mun="${c}"><span><b>${n}</b><br><span class="sub">Município · ${c}</span></span><span class="sub">${DATA.trafos.filter(t => t.ibge === c).length} trafos</span></button>`).join('') + (hits.length ? hits.map(t => `<button data-id="${t.id}"><span><span class="code">${t.id}</span><br><span class="sub">${t.ctmt} · ${t.se}</span></span><span class="sub">${fmt(t.pot)} kVA · janela ${kw(janela(t))}</span></button>`).join('')
+    : muns.length || locs.length ? '' : '<button disabled><span class="sub">Nenhum transformador encontrado</span></button>');
   box.hidden = false;
 });
 $('#results').addEventListener('click', e => {
+  const l = e.target.closest('button[data-loc]');
+  if (l){ const loc = DATA.localidades.find(x => x.nome === l.dataset.loc); $('#results').hidden = true; $('#q').value = loc.nome; map.flyTo(loc.ll, 15); return; }
   const m = e.target.closest('button[data-mun]');
   if (m){ const pts = DATA.trafos.filter(t => t.ibge === m.dataset.mun).map(t => t.ll); $('#results').hidden = true; $('#q').value = DATA.municipios[m.dataset.mun]; map.flyToBounds(pts, {padding:[40, 40]}); return; }
   const b = e.target.closest('button[data-id]'); if (!b) return;
