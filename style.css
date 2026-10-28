@@ -105,3 +105,4 @@ h3{font-family:var(--display);font-size:15px;letter-spacing:.06em;text-transform
 /* controles (zoom e bússola) saem de baixo da ficha aberta */
 @media (min-width:760px){body:has(#sheet:not([hidden])) .leaflet-bottom.leaflet-right{right:424px}}
 .leaflet-control-rotate a{background-color:var(--surface)!important}
+.giro a{display:grid!important;place-items:center;background:var(--surface)!important;color:var(--fg)!important;cursor:pointer}

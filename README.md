@@ -8,7 +8,7 @@ App web (PWA, instalável no celular) para consultar os transformadores da distr
 - Ficha do transformador com os atributos da BDGD e atributos adicionais.
 - Busca por endereço (OpenStreetMap), coordenada, município, distrito, código do transformador, alimentador ou subestação. Ao achar o ponto, abre o transformador mais próximo.
 - Botão "Minha localização" (GPS) para uso em campo.
-- Girar o mapa: dois dedos no celular, Shift + roda do mouse no PC; a bússola volta ao norte (plugin leaflet-rotate).
+- Girar o mapa: dois dedos no celular, botões de girar ou Shift + roda do mouse no PC; a bússola volta ao norte (plugin leaflet-rotate).
 - Filtro "Usina que quero ligar (kW)": destaca os transformadores com janela suficiente.
 - Simulador na ficha: diz se a usina cabe ou quantos kW faltam.
 - Copiar os dados do transformador para o memorial/formulário de acesso.

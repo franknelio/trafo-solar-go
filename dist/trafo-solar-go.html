@@ -778,6 +778,7 @@ h3{font-family:var(--display);font-size:15px;letter-spacing:.06em;text-transform
 /* controles (zoom e bússola) saem de baixo da ficha aberta */
 @media (min-width:760px){body:has(#sheet:not([hidden])) .leaflet-bottom.leaflet-right{right:424px}}
 .leaflet-control-rotate a{background-color:var(--surface)!important}
+.giro a{display:grid!important;place-items:center;background:var(--surface)!important;color:var(--fg)!important;cursor:pointer}
 </style>
 </head>
 <body>
@@ -866,6 +867,25 @@ const kw = v => v == null ? 'a confirmar' : `${fmt(v)} kW`;
 const map = L.map('map', {zoomControl:false, attributionControl:true, minZoom:7, maxZoom:20, zoomSnap:.5,
   rotate:true, touchRotate:true, shiftKeyRotate:true, bearing:0, rotateControl:{closeOnZeroBearing:false, position:'bottomright'}}).setView(DATA.center, 16.5);
 L.control.zoom({position:'bottomright'}).addTo(map);
+// botões de girar 15° por clique (segurar o botão continua girando)
+const Giro = L.Control.extend({options:{position:'bottomright'}, onAdd(m){
+  const box = L.DomUtil.create('div', 'leaflet-bar giro');
+  const seta = d => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  [[-15, 'Girar para a esquerda', '<path d="M4 4v6h6"/><path d="M4.5 15a8 8 0 1 0 2-8.5L4 10"/>'],
+   [15, 'Girar para a direita', '<path d="M20 4v6h-6"/><path d="M19.5 15a8 8 0 1 1-2-8.5L20 10"/>']].forEach(([passo, nome, d]) => {
+    const a = L.DomUtil.create('a', '', box); a.href = '#'; a.title = nome; a.setAttribute('role', 'button'); a.setAttribute('aria-label', nome); a.innerHTML = seta(d);
+    let timer;
+    const girar = () => m.setBearing(m.getBearing() + passo);
+    const parar = () => clearInterval(timer);
+    L.DomEvent.disableClickPropagation(a);
+    L.DomEvent.on(a, 'click', L.DomEvent.preventDefault);
+    L.DomEvent.on(a, 'pointerdown', e => { L.DomEvent.preventDefault(e); girar(); parar(); timer = setInterval(girar, 120); });
+    L.DomEvent.on(a, 'pointerup pointerleave pointercancel', parar);
+    L.DomEvent.on(a, 'keydown', e => { if (e.key === 'Enter' || e.key === ' ') { L.DomEvent.preventDefault(e); girar(); } });
+  });
+  return box;
+}});
+if (map.setBearing) new Giro().addTo(map);
 map.attributionControl.setPrefix('Leaflet');
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
