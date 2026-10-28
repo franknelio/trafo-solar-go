@@ -15,7 +15,9 @@ function status(t){ const j = janela(t); if (j == null) return 'unk'; const r = 
 const STATUS_TXT = {ok:'Livre', warn:'Limitada', bad:'Saturada', unk:'GD a confirmar'};
 const kw = v => v == null ? 'a confirmar' : `${fmt(v)} kW`;
 
-const map = L.map('map', {zoomControl:false, attributionControl:true, minZoom:7, maxZoom:20, zoomSnap:.5}).setView(DATA.center, 16.5);
+// rotate: giro com dois dedos (celular), Shift + roda do mouse (PC) e bússola para voltar ao norte
+const map = L.map('map', {zoomControl:false, attributionControl:true, minZoom:7, maxZoom:20, zoomSnap:.5,
+  rotate:true, touchRotate:true, shiftKeyRotate:true, bearing:0, rotateControl:{closeOnZeroBearing:false, position:'bottomright'}}).setView(DATA.center, 16.5);
 L.control.zoom({position:'bottomright'}).addTo(map);
 map.attributionControl.setPrefix('Leaflet');
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -41,7 +43,7 @@ DATA.feeders.forEach(f => {
 });
 
 // transformadores (desenhados em canvas para aguentar milhares de pontos)
-map.createPane('trafos').style.zIndex = 450;
+map.createPane('trafos', map.getPane('rotatePane') || map.getPane('mapPane')).style.zIndex = 450;
 const renderer = L.canvas({padding:.3, pane:'trafos'});
 const markers = new Map();
 const radius = () => Math.max(3, Math.min(9, (map.getZoom() - 11) * 1.5));

@@ -22,6 +22,7 @@ app = app.replace("if ('serviceWorker' in navigator)", "if (false)")
 html = html.replace('<link rel="stylesheet" href="vendor/leaflet/leaflet.css">', inline_css("vendor/leaflet/leaflet.css"))
 html = html.replace('<link rel="stylesheet" href="style.css">', inline_css("style.css"))
 html = html.replace('<script src="vendor/leaflet/leaflet.js"></script>', inline_js((raiz / "vendor/leaflet/leaflet.js").read_text(encoding="utf-8")))
+html = html.replace('<script src="vendor/leaflet-rotate/leaflet-rotate.js"></script>', inline_js((raiz / "vendor/leaflet-rotate/leaflet-rotate.js").read_text(encoding="utf-8")))
 html = html.replace('<script src="app.js"></script>', inline_js(app))
 for linha in ('<link rel="manifest" href="manifest.webmanifest">\n',):
     html = html.replace(linha, "")
