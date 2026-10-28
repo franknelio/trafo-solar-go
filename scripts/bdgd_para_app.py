@@ -2,137 +2,161 @@
 
 Uso:
     pip install geopandas pyogrio
-    python scripts/bdgd_para_app.py caminho/EQUATORIAL_GO_xxxx.gdb --mun 5208707 --mun 5201405
+    python scripts/bdgd_para_app.py Equatorial_GO_6072_2025-12-31.gdb --mun 5210000 --mun 5217708
+    # opcional: potência das usinas, a partir da planilha de GD da ANEEL
+    python scripts/bdgd_para_app.py ... --gd empreendimento-geracao-distribuida.csv
 
 A BDGD de cada distribuidora é baixada em https://dadosabertos-aneel.opendata.arcgis.com
 (busque "BDGD" e o nome da distribuidora). Camadas usadas:
-    UNTRMT  (ou UNTRD nas versões antigas)  transformadores de distribuição, com geometria
-    EQTRMT                                  equipamento do trafo: tensões primária e secundária
-    CTMT                                    circuitos de média tensão (alimentadores)
-    SUB                                     subestações
-    UGBT_tab                                usinas de GD na baixa tensão, ligadas ao trafo por UNI_TR_MT
+    UNTRMT    transformadores MT/BT (ponto, potência em kVA, tensão secundária em kV)
+    EQTRMT    equipamento do trafo: código da tensão primária (tabela TTEN)
+    CTMT      alimentadores; SUB subestações
+    UCBT_tab  unidades consumidoras BT; CEG_GD preenchido = unidade com micro/minigeração
+    SSDMT     trechos da rede de média tensão (desenhados no mapa)
 
-Vários campos da BDGD são códigos de tabelas de domínio do PRODIST Módulo 10. O script
-imprime os códigos encontrados para conferência; os não mapeados aparecem como "cód. N".
+A BDGD traz quais unidades têm GD (CEG_GD), mas não a potência instalada delas na baixa
+tensão. A potência vem da planilha "Relação de empreendimentos de geração distribuída"
+da ANEEL (dadosabertos.aneel.gov.br), cruzada pelo código CEG.
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-import geopandas as gpd
 import pandas as pd
 import pyogrio
 
-# PRODIST Módulo 10, tabela TTEN (código -> volts). Conferir com a saída de diagnóstico.
-TTEN = {
-    6: 127, 7: 208, 10: 220, 11: 230, 13: 240, 14: 254, 15: 380, 16: 400, 17: 440,
-    43: 13200, 46: 13800, 49: 14190, 50: 14400, 59: 22000, 63: 24000, 69: 33000, 70: 34500,
+# PRODIST Módulo 10, tabela TTEN (código -> kV). Os códigos 39 e 58 são tensões fase-neutro
+# dos sistemas 13,8 kV e 34,5 kV (trafos monofásicos MRT).
+TTEN_KV = {39: 7.97, 49: 13.8, 58: 19.92, 72: 34.5}
+TTEN_SISTEMA = {39: 13.8, 49: 13.8, 58: 34.5, 72: 34.5}
+
+MUNICIPIOS_GO = {
+    "5207352": "Edealina", "5207402": "Edéia", "5217708": "Pontalina", "5222054": "Vicentinópolis",
+    "5210000": "Inhumas", "5218391": "Professor Jamil", "5206503": "Cromínia", "5208707": "Goiânia",
 }
-POSSE = {"PD": "PD", "PT": "PT"}
-IBGE_NOME = {}  # preenchido a partir da coluna MUN quando houver nome; senão fica só o código
+ELO = {"0": "Não informado", "": "Não informado"}
 
 
-def ler(gdb, *nomes, **kw):
-    camadas = {n.upper(): n for n, _ in pyogrio.list_layers(gdb)}
-    for n in nomes:
-        if n.upper() in camadas:
-            return gpd.read_file(gdb, layer=camadas[n.upper()], **kw)
-    sys.exit(f"Nenhuma das camadas {nomes} existe no arquivo. Camadas: {sorted(camadas)}")
+def ler(gdb, camada, **kw):
+    return pyogrio.read_dataframe(gdb, layer=camada, **kw)
 
 
-def volts(cod):
-    try:
-        cod = int(cod)
-    except (TypeError, ValueError):
-        return None
-    return TTEN.get(cod)
+def lista_sql(valores):
+    return ",".join(f"'{v}'" for v in valores)
 
 
-def fmt_ten(v):
-    if v is None:
-        return "—"
-    return f"{v/1000:.1f} kV".replace(".", ",") if v >= 1000 else f"{v} V"
+def potencia_gd(caminho):
+    """CEG -> kW a partir da planilha de GD da ANEEL (separador ;, decimal ,)."""
+    df = pd.read_csv(caminho, sep=";", encoding="latin-1", dtype=str, usecols=lambda c: c in (
+        "CodGeracaoDistribuida", "CodEmpreendimento", "MdaPotenciaInstaladaKW"))
+    cod = "CodGeracaoDistribuida" if "CodGeracaoDistribuida" in df else "CodEmpreendimento"
+    kw = pd.to_numeric(df["MdaPotenciaInstaladaKW"].str.replace(",", "."), errors="coerce")
+    return dict(zip(df[cod].str.strip(), kw))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("gdb")
-    ap.add_argument("--mun", action="append", help="código IBGE do município (pode repetir); sem ele, exporta tudo")
+    ap.add_argument("--mun", action="append", required=True, help="código IBGE do município (pode repetir)")
+    ap.add_argument("--gd", help="CSV da ANEEL com a potência das usinas de GD")
     ap.add_argument("--saida", default="data/trafos.json")
-    ap.add_argument("--fonte", default="BDGD ANEEL — Equatorial Goiás")
+    ap.add_argument("--fonte", default="BDGD ANEEL 2025 — Equatorial Goiás")
     a = ap.parse_args()
+    muns = lista_sql(a.mun)
 
-    tr = ler(a.gdb, "UNTRMT", "UNTRD")
-    if a.mun:
-        tr = tr[tr["MUN"].astype(str).isin(a.mun)]
-    tr = tr.to_crs(4326)
+    tr = ler(a.gdb, "UNTRMT", where=f"MUN IN ({muns}) AND SIT_ATIV = 'AT'").to_crs(4326)
     print(f"{len(tr)} transformadores", file=sys.stderr)
+    ids = tr["COD_ID"].astype(str).tolist()
 
-    eq = ler(a.gdb, "EQTRMT", "EQTRD", read_geometry=False)
-    eq = eq.drop_duplicates("UNI_TR_MT" if "UNI_TR_MT" in eq else "UNI_TR_D")
-    eq = eq.rename(columns={"UNI_TR_D": "UNI_TR_MT"}).set_index("UNI_TR_MT")
+    eq = ler(a.gdb, "EQTRMT", read_geometry=False, columns=["UNI_TR_MT", "TEN_PRI"])
+    eq = eq[eq["UNI_TR_MT"].isin(ids)].drop_duplicates("UNI_TR_MT").set_index("UNI_TR_MT")["TEN_PRI"]
 
-    ct = ler(a.gdb, "CTMT", read_geometry=False).set_index("COD_ID")
-    sub = ler(a.gdb, "SUB", read_geometry=False).set_index("COD_ID")
+    ct = ler(a.gdb, "CTMT", read_geometry=False, columns=["COD_ID", "NOME", "TEN_NOM", "SUB"]).set_index("COD_ID")
+    sub = ler(a.gdb, "SUB", read_geometry=False, columns=["COD_ID", "NOME"]).set_index("COD_ID")["NOME"]
 
-    ug = ler(a.gdb, "UGBT_tab", "UGBT", read_geometry=False)
-    ug = ug.rename(columns={"UNI_TR_D": "UNI_TR_MT"})
-    ug["POT_INST"] = pd.to_numeric(ug["POT_INST"], errors="coerce").fillna(0)
-    gd = ug.groupby("UNI_TR_MT")["POT_INST"].apply(lambda s: [round(x, 2) for x in s]).to_dict()
-
-    print("Códigos de tensão encontrados (EQTRMT):", file=sys.stderr)
-    for col in ("TEN_PRI", "TEN_SEC"):
-        if col in eq:
-            cods = sorted(eq[col].dropna().unique().tolist())
-            print(f"  {col}: " + ", ".join(f"{c}->{volts(c) or '?'}" for c in cods), file=sys.stderr)
+    uc = ler(a.gdb, "UCBT_tab", read_geometry=False, columns=["UNI_TR_MT", "CEG_GD", "SIT_ATIV", "MUN"],
+             where=f"MUN IN ({muns})")
+    uc_tr = uc.groupby("UNI_TR_MT").size()
+    gd = uc[uc["CEG_GD"].str.strip().fillna("") != ""]
+    kw = potencia_gd(a.gd) if a.gd else {}
+    usinas = gd.groupby("UNI_TR_MT")["CEG_GD"].apply(lambda s: [c.strip() for c in s]).to_dict()
 
     trafos = []
     for _, r in tr.iterrows():
         if r.geometry is None or r.geometry.is_empty:
             continue
-        p = r.geometry if r.geometry.geom_type == "Point" else r.geometry.centroid
-        e = eq.loc[r.COD_ID] if r.COD_ID in eq.index else None
+        cid = str(r.COD_ID)
         c = ct.loc[r.CTMT] if r.CTMT in ct.index else None
-        s = sub.loc[r.SUB] if "SUB" in r and r.SUB in sub.index else None
-        tp = volts(e.TEN_PRI) if e is not None and "TEN_PRI" in e else None
-        ts = volts(e.TEN_SEC) if e is not None and "TEN_SEC" in e else None
-        pot = float(pd.to_numeric(r.get("POT_NOM"), errors="coerce") or 0)
-        usinas = gd.get(r.COD_ID, [])
-        fp = str(r.get("FAS_CON_P") or "")
+        cod_tp = int(eq.get(cid)) if cid in eq.index and str(eq.get(cid)).isdigit() else None
+        sistema = TTEN_SISTEMA.get(int(c.TEN_NOM)) if c is not None and str(c.TEN_NOM).isdigit() else None
+        sistema = TTEN_SISTEMA.get(cod_tp) or sistema
+        ts = float(r.TEN_LIN_SE or 0)
+        cegs = usinas.get(cid, [])
+        pots = [kw[x] for x in cegs if x in kw and pd.notna(kw[x])]
+        fp = str(r.FAS_CON_P or "")
+        se_nome = str(sub.get(r.SUB, r.SUB)) if r.SUB else ""
         trafos.append({
-            "id": str(r.COD_ID),
-            "ll": [round(p.y, 6), round(p.x, 6)],
-            "pot": pot,
-            "tp": round(tp / 1000, 1) if tp else None,
-            "ts": fmt_ten(ts),
-            "sec": fmt_ten(ts),
+            "id": cid,
+            "ll": [round(r.geometry.y, 6), round(r.geometry.x, 6)],
+            "pot": float(r.POT_NOM or 0),
+            "tp": sistema,
+            "tp_fase": TTEN_KV.get(cod_tp),
+            "ts": f"{round(ts * 1000)} V" if ts else "—",
+            "sec": f"{round(ts * 1000)} V" if ts else "—",
             "ctmt": str(r.CTMT),
-            "ctmt_nome": str(c.NOME) if c is not None and "NOME" in c else str(r.CTMT),
-            "se": str(s.NOME) if s is not None and "NOME" in s else str(r.get("SUB", "")),
-            "se_cod": str(r.get("SUB", "")),
+            "ctmt_nome": str(c.NOME) if c is not None else str(r.CTMT),
+            "se": se_nome,
+            "se_cod": str(r.SUB),
             "fp": fp,
-            "fs": str(r.get("FAS_CON_S") or ""),
-            "tipo": "Trifásico" if len(fp.replace("N", "")) >= 3 else "Monofásico",
-            "elo": str(r.get("CAP_ELO") or "Não informado"),
-            "posse": POSSE.get(str(r.get("POS")), str(r.get("POS"))),
-            "usinas": len(usinas),
-            "gd": usinas,
-            "ger": round(sum(usinas), 1),
-            "mun": IBGE_NOME.get(str(r.MUN), ""),
+            "fs": str(r.FAS_CON_S or ""),
+            "tipo": "Trifásico" if len(fp) >= 3 else ("Bifásico" if len(fp) == 2 else "Monofásico"),
+            "mrt": str(r.MRT) == "1",
+            "elo": ELO.get(str(r.CAP_ELO or ""), str(r.CAP_ELO)),
+            "posse": str(r.POS),
+            "posto": str(r.POSTO or ""),
+            "area": "Urbana" if str(r.ARE_LOC) == "UB" else "Rural",
+            "ucs": int(uc_tr.get(cid, 0)),
+            "usinas": len(cegs),
+            "gd": [round(p, 2) for p in pots],
+            "ger": round(sum(pots), 1) if (pots or not cegs) else None,
+            "mun": MUNICIPIOS_GO.get(str(r.MUN), ""),
             "ibge": str(r.MUN),
-            "inst": str(r.get("POSTO_TRAN") or ""),
-            "ano": None,
+            "ano": str(r.DAT_CON or "")[-4:] or None,
+            "descr": str(r.DESCR or ""),
         })
 
-    out = {"fonte": a.fonte, "trafos": trafos, "streets": [], "blocks": [], "feeders": []}
-    if trafos:
-        lat = sorted(t["ll"][0] for t in trafos)[len(trafos) // 2]
-        lng = sorted(t["ll"][1] for t in trafos)[len(trafos) // 2]
-        out["center"] = [lat, lng]
+    # rede MT dos alimentadores presentes, recortada à área dos transformadores
+    ctmts = sorted({t["ctmt"] for t in trafos})
+    lat = [t["ll"][0] for t in trafos]; lng = [t["ll"][1] for t in trafos]
+    bbox = (min(lng) - .02, min(lat) - .02, max(lng) + .02, max(lat) + .02)
+    ss = ler(a.gdb, "SSDMT", columns=["CTMT"], bbox=bbox, where=f"CTMT IN ({lista_sql(ctmts)})").to_crs(4326)
+    ss["geometry"] = ss.geometry.simplify(0.00003)
+    paleta = ["#ff7a1a", "#2fb5ff", "#d36bff", "#ffd400", "#3fe0b0", "#ff4f8b", "#9be15d", "#7aa2ff"]
+    feeders = []
+    for i, (cod, grp) in enumerate(ss.groupby("CTMT")):
+        linhas = []
+        for g in grp.geometry:
+            for parte in getattr(g, "geoms", [g]):
+                linhas.append([[round(y, 5), round(x, 5)] for x, y in parte.coords])
+        c = ct.loc[cod] if cod in ct.index else None
+        feeders.append({
+            "id": str(c.NOME) if c is not None else str(cod), "cod": str(cod),
+            "se": str(sub.get(c.SUB, "")) if c is not None else "",
+            "ten": TTEN_SISTEMA.get(int(c.TEN_NOM), 13.8) if c is not None else 13.8,
+            "cor": paleta[i % len(paleta)], "c": linhas,
+        })
+
+    out = {
+        "fonte": a.fonte,
+        "municipios": {m: MUNICIPIOS_GO.get(m, m) for m in a.mun},
+        "center": [sorted(lat)[len(lat) // 2], sorted(lng)[len(lng) // 2]],
+        "trafos": trafos, "feeders": feeders, "streets": [], "blocks": [],
+    }
     Path(a.saida).parent.mkdir(parents=True, exist_ok=True)
     Path(a.saida).write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"Gravado {a.saida} com {len(trafos)} transformadores", file=sys.stderr)
+    com_gd = sum(1 for t in trafos if t["usinas"])
+    print(f"Gravado {a.saida}: {len(trafos)} trafos, {com_gd} com GD, {len(feeders)} alimentadores", file=sys.stderr)
 
 
 if __name__ == "__main__":
