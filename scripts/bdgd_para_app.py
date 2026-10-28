@@ -4,7 +4,7 @@ Uso:
     pip install geopandas pyogrio
     python scripts/bdgd_para_app.py Equatorial_GO_6072_2025-12-31.gdb --mun 5210000 --mun 5217708
     # opcional: potência das usinas, a partir da planilha de GD da ANEEL
-    python scripts/bdgd_para_app.py ... --gd empreendimento-geracao-distribuida.csv
+    python scripts/bdgd_para_app.py ... --gd empreendimento-geracao-distribuida.parquet
 
 A BDGD de cada distribuidora é baixada em https://dadosabertos-aneel.opendata.arcgis.com
 (busque "BDGD" e o nome da distribuidora). Camadas usadas:
@@ -47,19 +47,21 @@ def lista_sql(valores):
 
 
 def potencia_gd(caminho):
-    """CEG -> kW a partir da planilha de GD da ANEEL (separador ;, decimal ,)."""
-    df = pd.read_csv(caminho, sep=";", encoding="latin-1", dtype=str, usecols=lambda c: c in (
-        "CodGeracaoDistribuida", "CodEmpreendimento", "MdaPotenciaInstaladaKW"))
-    cod = "CodGeracaoDistribuida" if "CodGeracaoDistribuida" in df else "CodEmpreendimento"
-    kw = pd.to_numeric(df["MdaPotenciaInstaladaKW"].str.replace(",", "."), errors="coerce")
-    return dict(zip(df[cod].str.strip(), kw))
+    """CEG -> kW a partir da relação de empreendimentos de GD da ANEEL (.parquet ou .csv)."""
+    cols = ["CodEmpreendimento", "MdaPotenciaInstaladaKW"]
+    if str(caminho).endswith(".parquet"):
+        df = pd.read_parquet(caminho, columns=cols)
+    else:
+        df = pd.read_csv(caminho, sep=";", encoding="latin-1", dtype=str, usecols=cols)
+    kw = pd.to_numeric(df["MdaPotenciaInstaladaKW"].astype(str).str.replace(",", "."), errors="coerce")
+    return dict(zip(df["CodEmpreendimento"].astype(str).str.strip(), kw))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("gdb")
     ap.add_argument("--mun", action="append", required=True, help="código IBGE do município (pode repetir)")
-    ap.add_argument("--gd", help="CSV da ANEEL com a potência das usinas de GD")
+    ap.add_argument("--gd", help="relação de empreendimentos de GD da ANEEL (.parquet ou .csv)")
     ap.add_argument("--saida", default="data/trafos.json")
     ap.add_argument("--fonte", default="BDGD ANEEL 2025 — Equatorial Goiás")
     a = ap.parse_args()
