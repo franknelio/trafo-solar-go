@@ -1,6 +1,6 @@
 // Cache do app para abrir offline; dados e mapa base são buscados da rede primeiro
-const CACHE = 'trafo-solar-v4';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'manifest.webmanifest', 'icons/icon.svg'];
+const CACHE = 'trafo-solar-v5';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css', 'vendor/leaflet-rotate/leaflet-rotate.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(

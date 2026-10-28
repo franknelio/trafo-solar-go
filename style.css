@@ -102,3 +102,6 @@ h3{font-family:var(--display);font-size:15px;letter-spacing:.06em;text-transform
 .lbl-street{color:var(--muted);font-size:10px;font-weight:600;white-space:nowrap;text-shadow:0 0 3px var(--map)}
 @media (max-width:759px){.need label{display:none}.brand small{display:none}.legend{bottom:calc(12px + env(safe-area-inset-bottom,0px))}.demo{display:none}.layer{top:72px}.brand{display:none}.search-wrap{flex-basis:180px}.need{padding:0 8px}.need input{width:56px}}
 @media (prefers-reduced-motion:reduce){.tr{transition:none}}
+/* controles (zoom e bússola) saem de baixo da ficha aberta */
+@media (min-width:760px){body:has(#sheet:not([hidden])) .leaflet-bottom.leaflet-right{right:424px}}
+.leaflet-control-rotate a{background-color:var(--surface)!important}
