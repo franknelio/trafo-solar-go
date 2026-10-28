@@ -176,6 +176,12 @@ function applyNeed(){
 $('#need').addEventListener('change', applyNeed);
 
 // busca: trafo, alimentador, município, distrito, endereço ou coordenadas
+// A BDGD tem alguns trafos com coordenada errada, longe do município; ficam fora do enquadramento.
+const semPontosSoltos = pts => {
+  const med = i => pts.map(p => p[i]).sort((a, b) => a - b)[pts.length >> 1];
+  const c = [med(0), med(1)], perto = pts.filter(p => Math.hypot(p[0] - c[0], p[1] - c[1]) * 111 <= 40);
+  return perto.length ? perto : pts;
+};
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const COORD = /^\s*(-?\d{1,2}[.,]\d+)\s*[,;\s]\s*(-?\d{1,3}[.,]\d+)\s*$/;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
@@ -211,7 +217,7 @@ $('#results').addEventListener('click', e => {
   const l = e.target.closest('button[data-loc]');
   if (l){ const loc = DATA.localidades.find(x => x.nome === l.dataset.loc); $('#results').hidden = true; $('#q').value = loc.nome; map.flyTo(loc.ll, 15); return; }
   const m = e.target.closest('button[data-mun]');
-  if (m){ const pts = DATA.trafos.filter(t => t.ibge === m.dataset.mun).map(t => t.ll); $('#results').hidden = true; $('#q').value = DATA.municipios[m.dataset.mun]; map.flyToBounds(pts, {padding:[40, 40]}); return; }
+  if (m){ const pts = semPontosSoltos(DATA.trafos.filter(t => t.ibge === m.dataset.mun).map(t => t.ll)); $('#results').hidden = true; $('#q').value = DATA.municipios[m.dataset.mun]; map.flyToBounds(pts, {padding:[40, 40]}); return; }
   const b = e.target.closest('button[data-id]'); if (!b) return;
   const t = DATA.trafos.find(x => x.id === b.dataset.id); $('#results').hidden = true; $('#q').value = t.id; map.flyTo(t.ll, 18.5); open(t); });
 
