@@ -1,0 +1,3 @@
+*.gdb/
+*.zip
+__pycache__/

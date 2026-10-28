@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Trafo Solar GO</title>
+<meta name="theme-color" content="#e09a12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="map" aria-label="Mapa da rede de distribuição"></div>
+
+  <div class="top">
+    <div class="brand" title="Protótipo">
+      <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="4" fill="var(--accent)"/><path d="M6 6l12 12M18 6L6 18" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <div><b>Trafo Solar GO</b><small>Rede de distribuição · GD</small></div>
+    </div>
+    <div class="search-wrap">
+      <div class="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Código do trafo, alimentador ou subestação" autocomplete="off" aria-label="Buscar transformador">
+      </div>
+      <div class="results" id="results" hidden></div>
+    </div>
+    <div class="need" title="Destaca os transformadores com janela suficiente">
+      <label for="need">Usina que<br>quero ligar</label>
+      <input id="need" type="number" min="0" step="0.5" placeholder="kW" inputmode="decimal" aria-label="Potência da usina em kW">
+      <span style="font-size:12px;color:var(--muted)">kW</span>
+    </div>
+  </div>
+
+  <div class="layer" id="layer">
+    <button id="b-vec" aria-pressed="true">Mapa</button>
+    <button id="b-sat" aria-pressed="false">Satélite</button>
+    <button id="b-net" aria-pressed="true">Rede MT</button>
+  </div>
+
+  <div class="legend">
+    <h4>Janela para geração</h4>
+    <div class="row">
+      <span><i class="dot" style="background:var(--ok)"></i>Livre &gt; 40%</span>
+      <span><i class="dot" style="background:var(--warn)"></i>Limitada</span>
+      <span><i class="dot" style="background:var(--bad)"></i>Saturada &lt; 10%</span>
+    </div>
+    <div class="row" id="feeder-legend"></div>
+  </div>
+
+  <div class="demo">Dados de exemplo. A versão final usa a BDGD da ANEEL.</div>
+  <div class="toast" id="toast" hidden></div>
+
+  <aside class="sheet" id="sheet" hidden aria-label="Ficha do transformador">
+    <div class="sheet-head">
+      <div><small>Potência</small><b id="h-pot"></b></div>
+      <div><small>Tensão prim.</small><b id="h-tp"></b></div>
+      <div><small>Tensão sec.</small><b id="h-ts"></b></div>
+      <div><small>Usinas</small><b id="h-nat"></b></div>
+      <button class="close" id="close" aria-label="Fechar ficha">×</button>
+    </div>
+    <div class="sheet-body" id="body"></div>
+  </aside>
+</div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
