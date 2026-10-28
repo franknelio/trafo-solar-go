@@ -2,18 +2,18 @@
 :root{
   --bg:#eef1ee; --surface:#ffffff; --surface-2:#f4f6f3; --fg:#18201c; --muted:#5d6a63; --line:#d8ded9;
   --accent:#e09a12; --accent-ink:#3a2700; --map:#dfe5df; --block:#cdd6cd; --street:#ffffff;
-  --ok:#1f9d55; --warn:#d68a00; --bad:#d23c2f;
+  --ok:#1f9d55; --warn:#d68a00; --bad:#d23c2f; --unk:#7d8a83;
   --display:"Barlow Condensed","Arial Narrow",sans-serif; --body:"Barlow",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
   --shadow:0 6px 24px rgba(20,30,25,.18);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#111613; --surface:#1a201c; --surface-2:#222a25; --fg:#e8eee9; --muted:#97a59d; --line:#2f3832;
   --accent:#f2b02e; --accent-ink:#2b1d00; --map:#151b17; --block:#232c26; --street:#39443d;
-  --ok:#3fcf7d; --warn:#f2b02e; --bad:#ff6a5c; --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark}}
+  --ok:#3fcf7d; --warn:#f2b02e; --bad:#ff6a5c; --unk:#8d9a93; --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#111613; --surface:#1a201c; --surface-2:#222a25; --fg:#e8eee9; --muted:#97a59d; --line:#2f3832;
   --accent:#f2b02e; --accent-ink:#2b1d00; --map:#151b17; --block:#232c26; --street:#39443d;
-  --ok:#3fcf7d; --warn:#f2b02e; --bad:#ff6a5c; --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark}
+  --ok:#3fcf7d; --warn:#f2b02e; --bad:#ff6a5c; --unk:#8d9a93; --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark}
 html,body{height:100%}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;overflow:hidden}
@@ -74,7 +74,7 @@ button,input{font:inherit;color:inherit}
 .idline{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0 6px}
 .idline .code{font-family:var(--mono);font-size:14px}
 .pill{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;color:#fff;white-space:nowrap}
-.pill.ok{background:var(--ok)} .pill.warn{background:var(--warn)} .pill.bad{background:var(--bad)}
+.pill.ok{background:var(--ok)} .pill.warn{background:var(--warn)} .pill.bad{background:var(--bad)} .pill.unk{background:var(--unk)}
 .cap{margin:6px 0 10px}
 .bar{height:12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;display:flex}
 .bar i{display:block;height:100%}
