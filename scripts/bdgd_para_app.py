@@ -37,7 +37,7 @@ TTEN_SISTEMA = {39: 13.8, 49: 13.8, 58: 34.5, 72: 34.5}
 MUNICIPIOS_GO = {
     "5207352": "Edealina", "5207402": "Edéia", "5217708": "Pontalina", "5222054": "Vicentinópolis",
     "5210000": "Inhumas", "5218391": "Professor Jamil", "5206503": "Cromínia", "5208707": "Goiânia",
-    "5204508": "Caldas Novas", "5213806": "Morrinhos", "5200134": "Acreúna", "5201405": "Aparecida de Goiânia", "5219100": "Santa Bárbara de Goiás",
+    "5204508": "Caldas Novas", "5213806": "Morrinhos", "5200134": "Acreúna", "5201405": "Aparecida de Goiânia", "5219100": "Santa Bárbara de Goiás", "5205901": "Corumbaíba", "5212907": "Marzagão",
 }
 ELO = {"0": "Não informado", "": "Não informado"}
 
